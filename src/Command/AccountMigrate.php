@@ -7,9 +7,11 @@ use Bolt\Extension\Bolt\MarketPlace\Storage\Repository as MarketPlaceRepository;
 use Bolt\Extension\Bolt\MarketPlaceMigration\Storage\Entity;
 use Bolt\Extension\Bolt\MarketPlaceMigration\Storage\Repository;
 use Bolt\Extension\Bolt\Members\Storage\Entity\Account as MembersAccountEntity;
+use Bolt\Extension\Bolt\Members\Storage\Entity\AccountMeta as MembersAccountMetaEntity;
 use Bolt\Extension\Bolt\Members\Storage\Entity\Oauth as MembersOauthEntity;
 use Bolt\Extension\Bolt\Members\Storage\Records;
 use Bolt\Extension\Bolt\Members\Storage\Repository\Account as MembersAccountRepository;
+use Bolt\Extension\Bolt\Members\Storage\Repository\AccountMeta as MembersAccountMetaRepository;
 use Bolt\Extension\Bolt\Members\Storage\Repository\Oauth as MembersOauthRepository;
 use Bolt\Nut\BaseCommand;
 use Bolt\Storage\QuerySet;
@@ -29,7 +31,7 @@ class AccountMigrate extends BaseCommand
     protected function configure()
     {
         $this->setName('account:migrate')
-                ->setDescription('Migrate the account database.')
+            ->setDescription('Migrate the account database.')
         ;
     }
 
@@ -39,6 +41,8 @@ class AccountMigrate extends BaseCommand
 
         /** @var MembersAccountRepository $membersAccountRepo */
         $membersAccountRepo = $app['storage']->getRepository(MembersAccountEntity::class);
+        /** @var MembersAccountMetaRepository $membersAccountMetaRepo */
+        $membersAccountMetaRepo = $app['storage']->getRepository(MembersAccountMetaEntity::class);
         /** @var MembersOauthRepository $membersOauthRepo */
         $membersOauthRepo = $app['storage']->getRepository(MembersOauthEntity::class);
 
@@ -58,7 +62,7 @@ class AccountMigrate extends BaseCommand
         /** @var Entity\Account $account */
         foreach ($accounts as $account) {
             $output->writeln(sprintf('<info>Migrating %s (%s)</info>', $account->getEmail(), $account->getId()));
-            $this->migrateAccount($membersAccountRepo, $membersOauthRepo, $account, $output);
+            $this->migrateAccount($membersAccountRepo, $membersAccountMetaRepo, $membersOauthRepo, $account, $output);
         }
 
         foreach ($this->errors as $error) {
@@ -68,6 +72,7 @@ class AccountMigrate extends BaseCommand
 
     protected function migrateAccount(
         MembersAccountRepository $membersAccountRepo,
+        MembersAccountMetaRepository $membersAccountMetaRepo,
         MembersOauthRepository $membersOauthRepo,
         Entity\Account $account,
         OutputInterface $output
@@ -89,6 +94,12 @@ class AccountMigrate extends BaseCommand
             'lastip'      => null,
         ]);
 
+        $memberAccountMeta = new MembersAccountMetaEntity([
+            'guid'  => $guid,
+            'meta'  => 'username',
+            'value' => $account->getUsername(),
+        ]);
+
         $membersOauth = new MembersOauthEntity([
             'id'                => Uuid::uuid4()->toString(),
             'guid'              => $guid,
@@ -99,6 +110,7 @@ class AccountMigrate extends BaseCommand
 
         try {
             $this->insert($membersAccountRepo, $memberAccount);
+            $this->insert($membersAccountMetaRepo, $memberAccountMeta);
             $this->insert($membersOauthRepo, $membersOauth);
 
             $membersRecords->createProvision($guid, 'local', $guid);
